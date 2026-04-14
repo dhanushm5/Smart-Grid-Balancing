@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from statistics import mean
 
 from smartgrid.config import ExperimentConfig, GridConfig
 from smartgrid.environment import EpisodeResult, GridEnvironment
 from smartgrid.policies import BasePolicy, RuleBasedPeakShavingPolicy, ZeroActionPolicy
 from smartgrid.train import train_linear_policy
+from smartgrid.citylearn_support import CityLearnBackendConfig, evaluate_citylearn_controller
 
 
 def evaluate_policy(env: GridEnvironment, policy: BasePolicy, num_episodes: int, seed_base: int) -> EpisodeResult:
@@ -48,10 +50,33 @@ def print_comparison(name: str, baseline: EpisodeResult, candidate: EpisodeResul
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Smart-grid load-shifting experiment")
+    parser.add_argument("--backend", choices=["synthetic", "citylearn"], default="synthetic", help="Simulation backend to run")
+    parser.add_argument("--schema", type=str, default=None, help="CityLearn schema filepath when using the citylearn backend")
+    parser.add_argument("--dataset-name", type=str, default="citylearn_challenge_2022_phase_all_plus_evs", help="CityLearn dataset name to cache and run")
+    parser.add_argument("--cache-root", type=str, default=None, help="Directory used to cache CityLearn datasets")
     parser.add_argument("--days", type=int, default=14, help="Episode horizon in days")
     parser.add_argument("--eval-episodes", type=int, default=5, help="Number of evaluation episodes")
     parser.add_argument("--train-episodes", type=int, default=60, help="Training episodes for learned policy")
     args = parser.parse_args()
+
+    if args.backend == "citylearn":
+        cache_root = Path(args.cache_root).expanduser() if args.cache_root is not None else Path.home() / ".cache" / "smartgrid_balancing" / "citylearn"
+        env_config = CityLearnBackendConfig(
+            dataset_name=args.dataset_name,
+            episode_time_steps=args.days * 24,
+            random_seed=0,
+            cache_root=cache_root,
+            schema_path=Path(args.schema).expanduser() if args.schema is not None else None,
+        )
+        baseline, candidate = evaluate_citylearn_controller(env_config, episodes=args.eval_episodes)
+
+        print("Smart Grid Balancing Experiment")
+        print("--------------------------------")
+        print(f"Backend: CityLearn ({env_config.dataset_name})")
+        print(f"Episode time steps: {env_config.episode_time_steps}")
+
+        print_comparison("CityLearn heuristic policy", baseline, candidate)
+        return
 
     grid_cfg = GridConfig()
     exp_cfg = ExperimentConfig(horizon_days=args.days, num_eval_episodes=args.eval_episodes)
