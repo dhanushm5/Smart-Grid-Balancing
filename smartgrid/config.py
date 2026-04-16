@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 
@@ -12,6 +13,23 @@ class GridConfig:
     timestep_hours: float = 1.0
     random_seed: int = 7
 
+    # Observation normalisation denominators
+    demand_norm_max: float = 150.0
+    renewable_norm_max: float = 120.0
+
+    # Comfort / safety thresholds
+    soc_comfort_min: float = 0.10
+
+    @property
+    def charge_efficiency(self) -> float:
+        """One-way efficiency applied when charging."""
+        return math.sqrt(self.battery_round_trip_efficiency)
+
+    @property
+    def discharge_efficiency(self) -> float:
+        """One-way efficiency applied when discharging."""
+        return math.sqrt(self.battery_round_trip_efficiency)
+
 
 @dataclass
 class ExperimentConfig:
@@ -25,3 +43,7 @@ class ExperimentConfig:
     emissions_weight: float = 1.0
     battery_cycling_weight: float = 0.08
     num_eval_episodes: int = 5
+
+    # Reward shaping
+    peak_threshold_kw: float = 95.0
+    comfort_penalty: float = 5.0

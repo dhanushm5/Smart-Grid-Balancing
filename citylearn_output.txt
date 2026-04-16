@@ -1,0 +1,11 @@
+Smart Grid Balancing Experiment
+--------------------------------
+Backend: CityLearn (citylearn_challenge_2022_phase_all_plus_evs)
+Episode time steps: 336
+
+=== CityLearn heuristic policy vs No-Control Baseline ===
+Peak demand (kW):          1.60  (+60.48%)
+Total cost (arbitrary):    2.53  (+153.29%)
+Total emissions:           2.17  (+116.72%)
+Battery throughput:        2.43  (+143.37%)
+Comfort violations:     0

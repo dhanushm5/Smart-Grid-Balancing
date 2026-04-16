@@ -76,19 +76,25 @@ class GridEnvironment:
         clipped_action = float(np.clip(action, -1.0, 1.0))
         power_setpoint_kw = clipped_action * self.grid_cfg.max_battery_power_kw
 
+        eta_charge = self.grid_cfg.charge_efficiency
+        eta_discharge = self.grid_cfg.discharge_efficiency
+
         max_discharge_kwh = self._soc_kwh
         max_charge_kwh = self.grid_cfg.battery_capacity_kwh - self._soc_kwh
 
         if power_setpoint_kw >= 0.0:
+            # Discharging: SOC drops by raw amount, grid receives eta * amount
             battery_out_kwh = min(power_setpoint_kw * self.grid_cfg.timestep_hours, max_discharge_kwh)
             battery_in_kwh = 0.0
             self._soc_kwh -= battery_out_kwh
-            battery_to_grid_kw = battery_out_kwh / self.grid_cfg.timestep_hours
+            battery_to_grid_kw = (battery_out_kwh * eta_discharge) / self.grid_cfg.timestep_hours
         else:
+            # Charging: grid supplies raw amount, only eta * amount is stored
             requested_charge_kwh = -power_setpoint_kw * self.grid_cfg.timestep_hours
-            battery_in_kwh = min(requested_charge_kwh, max_charge_kwh)
+            actual_stored_kwh = min(requested_charge_kwh * eta_charge, max_charge_kwh)
+            battery_in_kwh = requested_charge_kwh
             battery_out_kwh = 0.0
-            self._soc_kwh += battery_in_kwh
+            self._soc_kwh += actual_stored_kwh
             battery_to_grid_kw = -(battery_in_kwh / self.grid_cfg.timestep_hours)
 
         demand_kw = self._demand[self._step]
@@ -103,10 +109,10 @@ class GridEnvironment:
         cost = net_grid_kw * price
         emitted = net_grid_kw * emissions
 
-        comfort_violation = int((self._soc_kwh / self.grid_cfg.battery_capacity_kwh) < 0.10)
+        comfort_violation = int((self._soc_kwh / self.grid_cfg.battery_capacity_kwh) < self.grid_cfg.soc_comfort_min)
         self._comfort_violations += comfort_violation
 
-        peak_proxy = max(0.0, net_grid_kw - 95.0)
+        peak_proxy = max(0.0, net_grid_kw - self.exp_cfg.peak_threshold_kw)
         battery_throughput = battery_out_kwh + battery_in_kwh
 
         reward = -(
@@ -114,7 +120,7 @@ class GridEnvironment:
             + self.exp_cfg.emissions_weight * emitted
             + self.exp_cfg.peak_penalty_weight * peak_proxy
             + self.exp_cfg.battery_cycling_weight * battery_throughput
-            + 5.0 * comfort_violation
+            + self.exp_cfg.comfort_penalty * comfort_violation
         )
 
         self._trace_grid_kw.append(net_grid_kw)
@@ -161,8 +167,8 @@ class GridEnvironment:
 
         obs = np.array(
             [
-                self._demand[idx] / 150.0,
-                self._renewables[idx] / 120.0,
+                self._demand[idx] / self.grid_cfg.demand_norm_max,
+                self._renewables[idx] / self.grid_cfg.renewable_norm_max,
                 self._price_signal[idx],
                 self._emission_signal[idx],
                 np.sin(2 * np.pi * hour_of_day / self.steps_per_day),

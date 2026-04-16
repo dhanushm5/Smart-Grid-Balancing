@@ -85,7 +85,20 @@ def build_citylearn_env(config: CityLearnBackendConfig) -> CityLearnEnv:
 
 
 class CityLearnHeuristicController:
-    """Hand-tuned controller for CityLearn action vectors."""
+    """Hand-tuned controller for CityLearn action vectors.
+
+    Observation scales (from the 2022 challenge dataset):
+    - ``hour``: 0-23 integer
+    - ``electricity_pricing``: ~0.13-0.17  ($/kWh)
+    - ``carbon_intensity``: ~0.16-0.25  (kgCO2/kWh)
+    - ``solar_generation``: 0-10  (kWh per building per hour)
+    - ``electrical_storage_soc``: 0.0-1.0
+    - ``net_electricity_consumption``: can be negative when solar exceeds load
+
+    Action convention (central agent, per-building slots):
+    - ``electrical_storage``: positive = charge, negative = discharge, range [-1, 1]
+    - ``electric_vehicle_storage_*``: positive = charge, range depends on charger
+    """
 
     def __init__(self, env: CityLearnEnv) -> None:
         self.action_names = list(env.action_names[0])
@@ -100,19 +113,48 @@ class CityLearnHeuristicController:
         observation_values = np.asarray(list(observation), dtype=float)
 
         hour = self._first_value(observation_values, "hour", default=12.0)
-        price = self._first_value(observation_values, "electricity_pricing", default=0.0)
-        carbon = self._first_value(observation_values, "carbon_intensity", default=0.0)
+        price = self._first_value(observation_values, "electricity_pricing", default=0.15)
+        carbon = self._first_value(observation_values, "carbon_intensity", default=0.20)
         solar = self._first_value(observation_values, "solar_generation", default=0.0)
-        storage_soc = self._mean_value(observation_values, "electrical_storage_soc", default=0.5)
+        net_consumption = self._first_value(observation_values, "net_electricity_consumption", default=0.0)
+        storage_soc = self._mean_value(observation_values, "electrical_storage_soc", default=0.0)
 
+        # --- Battery storage strategy ---
         storage_signal = 0.0
-        if 17 <= hour <= 21 and storage_soc > 0.35:
-            storage_signal = -0.55
-        elif 10 <= hour <= 14 and storage_soc < 0.8 and (price < 0.08 or solar > 200.0):
-            storage_signal = 0.25
 
-        ev_signal = 0.0
+        # Evening peak (17-21h): discharge if we have stored energy
+        if 17 <= hour <= 21 and storage_soc > 0.15:
+            # Discharge harder when SOC is high and price/carbon are elevated
+            if storage_soc > 0.5:
+                storage_signal = -0.8
+            else:
+                storage_signal = -0.45
 
+        # Midday solar surplus (9-15h): charge aggressively from cheap solar
+        elif 9 <= hour <= 15 and storage_soc < 0.90:
+            if solar > 2.0:
+                # Strong solar — charge aggressively
+                storage_signal = 0.7
+            elif solar > 0.5 and price < 0.15:
+                # Moderate solar + cheap price — charge moderately
+                storage_signal = 0.4
+            elif price < 0.14:
+                # No solar but cheap electricity — mild charge
+                storage_signal = 0.25
+
+        # Early morning (0-6h): mild charge during off-peak if battery is low
+        elif 0 <= hour <= 6 and storage_soc < 0.4 and price < 0.16:
+            storage_signal = 0.3
+
+        # Late afternoon (15-17h): hold / top up if solar still available
+        elif 15 <= hour < 17 and storage_soc < 0.7 and solar > 1.0:
+            storage_signal = 0.35
+
+        # --- EV charging strategy ---
+        # Charge EVs if they're connected and need charge before departure
+        ev_signal = self._compute_ev_signal(observation_values, hour)
+
+        # --- Build action vector ---
         actions = np.zeros(len(self.action_names), dtype=float)
         for index, action_name in enumerate(self.action_names):
             if action_name == "electrical_storage":
@@ -123,6 +165,13 @@ class CityLearnHeuristicController:
                 actions[index] = 0.0
 
         return [actions.tolist()]
+
+    def _compute_ev_signal(self, observation: np.ndarray, hour: float) -> float:
+        """Simple EV charging: charge during off-peak / solar hours."""
+        # Charge EVs during solar hours or overnight off-peak
+        if 9 <= hour <= 15 or 0 <= hour <= 5:
+            return 0.3
+        return 0.0
 
     def _first_value(self, observation: np.ndarray, name: str, default: float = 0.0) -> float:
         index = self._first_indices.get(name)
@@ -142,6 +191,7 @@ class CityLearnHeuristicController:
 
         clipped = float(np.clip(normalized_value, -1.0, 1.0))
         if low >= 0.0:
+            # Action space is [0, high] — map positive half only
             return float(max(0.0, clipped) * high)
 
         if clipped >= 0.0:

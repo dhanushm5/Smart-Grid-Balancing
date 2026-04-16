@@ -35,16 +35,16 @@ def evaluate_policy(env: GridEnvironment, policy: BasePolicy, num_episodes: int,
 
 
 def print_comparison(name: str, baseline: EpisodeResult, candidate: EpisodeResult) -> None:
-    def pct_delta(new: float, old: float) -> float:
+    def pct_delta(new: float, old: float) -> str:
         if old == 0:
-            return 0.0
-        return (new - old) / old * 100.0
+            return "   N/A"
+        return f"{(new - old) / old * 100.0:+6.2f}%"
 
     print(f"\n=== {name} vs No-Control Baseline ===")
-    print(f"Peak demand (kW):       {candidate.peak_demand_kw:7.2f}  ({pct_delta(candidate.peak_demand_kw, baseline.peak_demand_kw):+6.2f}%)")
-    print(f"Total cost (arbitrary): {candidate.total_cost:7.2f}  ({pct_delta(candidate.total_cost, baseline.total_cost):+6.2f}%)")
-    print(f"Total emissions:        {candidate.total_emissions:7.2f}  ({pct_delta(candidate.total_emissions, baseline.total_emissions):+6.2f}%)")
-    print(f"Battery throughput:     {candidate.battery_throughput_kwh:7.2f}  ({pct_delta(candidate.battery_throughput_kwh, baseline.battery_throughput_kwh):+6.2f}%)")
+    print(f"Peak demand (kW):       {candidate.peak_demand_kw:7.2f}  ({pct_delta(candidate.peak_demand_kw, baseline.peak_demand_kw)})")
+    print(f"Total cost (arbitrary): {candidate.total_cost:7.2f}  ({pct_delta(candidate.total_cost, baseline.total_cost)})")
+    print(f"Total emissions:        {candidate.total_emissions:7.2f}  ({pct_delta(candidate.total_emissions, baseline.total_emissions)})")
+    print(f"Battery throughput:     {candidate.battery_throughput_kwh:7.2f}  ({pct_delta(candidate.battery_throughput_kwh, baseline.battery_throughput_kwh)})")
     print(f"Comfort violations:     {candidate.comfort_violations}")
 
 
