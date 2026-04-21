@@ -126,29 +126,29 @@ class CityLearnHeuristicController:
         if 17 <= hour <= 21 and storage_soc > 0.15:
             # Discharge harder when SOC is high and price/carbon are elevated
             if storage_soc > 0.5:
-                storage_signal = -0.8
+                storage_signal = 0.8
             else:
-                storage_signal = -0.45
+                storage_signal = 0.45
 
         # Midday solar surplus (9-15h): charge aggressively from cheap solar
         elif 9 <= hour <= 15 and storage_soc < 0.90:
             if solar > 2.0:
                 # Strong solar — charge aggressively
-                storage_signal = 0.7
+                storage_signal = -0.7
             elif solar > 0.5 and price < 0.15:
                 # Moderate solar + cheap price — charge moderately
-                storage_signal = 0.4
+                storage_signal = -0.4
             elif price < 0.14:
                 # No solar but cheap electricity — mild charge
-                storage_signal = 0.25
+                storage_signal = -0.25
 
         # Early morning (0-6h): mild charge during off-peak if battery is low
         elif 0 <= hour <= 6 and storage_soc < 0.4 and price < 0.16:
-            storage_signal = 0.3
+            storage_signal = -0.3
 
         # Late afternoon (15-17h): hold / top up if solar still available
         elif 15 <= hour < 17 and storage_soc < 0.7 and solar > 1.0:
-            storage_signal = 0.35
+            storage_signal = -0.35
 
         # --- EV charging strategy ---
         # Charge EVs if they're connected and need charge before departure
@@ -170,7 +170,7 @@ class CityLearnHeuristicController:
         """Simple EV charging: charge during off-peak / solar hours."""
         # Charge EVs during solar hours or overnight off-peak
         if 9 <= hour <= 15 or 0 <= hour <= 5:
-            return 0.3
+            return -0.3
         return 0.0
 
     def _first_value(self, observation: np.ndarray, name: str, default: float = 0.0) -> float:

@@ -9,6 +9,7 @@ peak demand, cost, and emissions.
 - A lightweight smart-grid simulation environment (`smartgrid/environment.py`)
 - A no-control baseline and rule-based peak-shaving controller (`smartgrid/policies.py`)
 - A trainable linear policy with a simple policy-search loop (`smartgrid/train.py`)
+- Stable-Baselines3 PPO agent training for Green vs Economic reward balancing
 - A CLI experiment runner with side-by-side comparisons (`scripts/run_experiment.py`)
 - A CityLearn backend that can pull a real CityLearn challenge dataset and run a heuristic controller
 - Basic tests for environment execution and policy performance (`tests/test_environment.py`)
@@ -16,6 +17,10 @@ peak demand, cost, and emissions.
 The current implementation is designed as a practical bridge to your
 CityLearn-based target system. It lets you validate reward shaping and compare
 control strategies before integrating external simulators.
+
+## MVP Scope Adjustment
+
+**Note for Presentations:** The original project plan proposed an action space encompassing battery dispatch, HVAC setpoint control, and appliance cycle delay. For this MVP, the action space has been reduced to **battery and EV charge/discharge only**. This scope reduction allows for faster validation of the reinforcement learning infrastructure (`Gymnasium` environment wrapping, reward shaping) before introducing complex multi-dimensional actions. If presenting this MVP, be sure to update the PPT deck to reflect this focused action space.
 
 ## Quick Start
 
@@ -45,8 +50,12 @@ You should see metrics for:
 - `No-Control Baseline`
 - `Rule-based policy`
 - `Learned linear policy`
+- `PPO Green Agent (Emissions Focus)`
+- `PPO Economic Agent (Cost Focus)`
 
 with percentage changes in peak demand, cost, and emissions.
+
+**Note on the Learned Linear Policy:** The simple linear policy serves as a lightweight training loop placeholder. While it consistently achieves strong peak demand reductions, you will notice it does so via brute-force over-cycling of the battery, which actually *increases* overall cost and emissions. It is included to demonstrate the policy search functionality, but for a true all-round agent, use the deep PPO models.
 
 ## Run Tests
 

@@ -5,8 +5,9 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from .config import ExperimentConfig, GridConfig
+import gymnasium as gym
 
+from .config import ExperimentConfig, GridConfig
 
 @dataclass
 class EpisodeResult:
@@ -18,15 +19,19 @@ class EpisodeResult:
     battery_throughput_kwh: float
 
 
-class GridEnvironment:
+class GridEnvironment(gym.Env):
     """A lightweight, RL-friendly smart-grid environment with battery dispatch."""
 
     def __init__(self, grid_cfg: GridConfig, exp_cfg: ExperimentConfig) -> None:
+        super().__init__()
         self.grid_cfg = grid_cfg
         self.exp_cfg = exp_cfg
         self.steps_per_day = int(24 / grid_cfg.timestep_hours)
         self.episode_steps = self.steps_per_day * exp_cfg.horizon_days
         self.rng = np.random.default_rng(grid_cfg.random_seed)
+
+        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+        self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
 
         self._soc_kwh = grid_cfg.initial_soc * grid_cfg.battery_capacity_kwh
         self._demand: np.ndarray | None = None
@@ -42,7 +47,8 @@ class GridEnvironment:
         self._total_cost = 0.0
         self._total_emissions = 0.0
 
-    def reset(self, seed: int | None = None) -> np.ndarray:
+    def reset(self, seed: int | None = None, options: dict | None = None) -> Tuple[np.ndarray, dict]:
+        super().reset(seed=seed)
         if seed is not None:
             self.rng = np.random.default_rng(seed)
 
@@ -59,9 +65,9 @@ class GridEnvironment:
         self._price_signal = self._generate_price_signal()
         self._emission_signal = self._generate_emission_signal()
 
-        return self._get_observation()
+        return self._get_observation(), {}
 
-    def step(self, action: float) -> Tuple[np.ndarray, float, bool, Dict[str, float]]:
+    def step(self, action) -> Tuple[np.ndarray, float, bool, bool, dict]:
         """Run one step.
 
         Action convention:
@@ -73,6 +79,8 @@ class GridEnvironment:
         assert self._price_signal is not None
         assert self._emission_signal is not None
 
+        if isinstance(action, np.ndarray):
+            action = action.item() if action.size == 1 else action[0]
         clipped_action = float(np.clip(action, -1.0, 1.0))
         power_setpoint_kw = clipped_action * self.grid_cfg.max_battery_power_kw
 
@@ -140,8 +148,8 @@ class GridEnvironment:
             "comfort_violation": float(comfort_violation),
         }
 
-        obs = self._get_observation() if not done else np.zeros(6, dtype=float)
-        return obs, reward, done, info
+        obs = self._get_observation() if not done else np.zeros(6, dtype=np.float32)
+        return obs, float(reward), done, False, info
 
     def summarize_episode(self) -> EpisodeResult:
         peak = max(self._trace_grid_kw) if self._trace_grid_kw else 0.0
@@ -174,7 +182,7 @@ class GridEnvironment:
                 np.sin(2 * np.pi * hour_of_day / self.steps_per_day),
                 soc,
             ],
-            dtype=float,
+            dtype=np.float32,
         )
         return obs
 
@@ -205,5 +213,6 @@ class GridEnvironment:
         hour = t % self.steps_per_day
 
         midday_low = 0.26 - 0.10 * np.exp(-((hour - 13) ** 2) / (2 * 3.2**2))
-        evening_high = 0.18 * np.exp(-((hour - 19) ** 2) / (2 * 2.4**2))
-        return np.clip(midday_low + evening_high, 0.08, 0.50)
+        # Carbon peaks in morning, price peaks at evening. This creates genuine tension!
+        morning_high = 0.18 * np.exp(-((hour - 8) ** 2) / (2 * 2.4**2))
+        return np.clip(midday_low + morning_high, 0.08, 0.50)

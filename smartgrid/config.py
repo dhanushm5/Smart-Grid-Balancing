@@ -6,7 +6,7 @@ from dataclasses import dataclass
 class GridConfig:
     """Configuration for a simplified grid + battery simulation."""
 
-    battery_capacity_kwh: float = 120.0
+    battery_capacity_kwh: float = 150.0
     max_battery_power_kw: float = 40.0
     battery_round_trip_efficiency: float = 0.92
     initial_soc: float = 0.55
@@ -36,7 +36,8 @@ class ExperimentConfig:
     """Top-level experiment configuration."""
 
     horizon_days: int = 14
-    demand_noise_std: float = 4.5
+    # Profile generation
+    demand_noise_std: float = 0.5
     renewable_share: float = 0.35
     peak_penalty_weight: float = 1.3
     energy_cost_weight: float = 1.0
@@ -45,5 +46,5 @@ class ExperimentConfig:
     num_eval_episodes: int = 5
 
     # Reward shaping
-    peak_threshold_kw: float = 95.0
-    comfort_penalty: float = 5.0
+    peak_threshold_kw: float = 75.0
+    comfort_penalty: float = 500.0

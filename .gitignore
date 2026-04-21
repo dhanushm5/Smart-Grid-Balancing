@@ -2,3 +2,5 @@ AI_Sustainable_Development_Proposal.txt
 Agentic_AI_for_Smart_Grid_Balancing\
 .venv
 .pytest_cache
+venv/
+__pycache__/

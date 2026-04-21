@@ -8,12 +8,13 @@ from smartgrid.policies import RuleBasedPeakShavingPolicy, ZeroActionPolicy
 
 
 def run_episode(env: GridEnvironment, policy) -> float:
-    obs = env.reset(seed=123)
+    obs, _ = env.reset(seed=123)
     done = False
     total_reward = 0.0
 
     while not done:
-        obs, reward, done, _ = env.step(policy.act(obs))
+        obs, reward, terminated, truncated, _ = env.step(policy.act(obs))
+        done = terminated or truncated
         total_reward += reward
 
     return total_reward
@@ -48,12 +49,13 @@ def test_rule_based_policy_improves_peak() -> None:
 
 class TestObservation:
     def test_reset_returns_correct_shape(self, env: GridEnvironment) -> None:
-        obs = env.reset(seed=99)
+        obs, _ = env.reset(seed=99)
         assert obs.shape == (6,)
-        assert obs.dtype == float
+        assert obs.dtype == np.float32
 
     def test_step_returns_correct_shape(self, env: GridEnvironment) -> None:
-        obs, reward, done, info = env.step(0.0)
+        obs, reward, terminated, truncated, info = env.step(0.0)
+        done = terminated or truncated
         assert obs.shape == (6,)
         assert isinstance(reward, float)
         assert isinstance(done, bool)
@@ -88,7 +90,8 @@ class TestEpisodeTermination:
         steps = 0
         done = False
         while not done:
-            _, _, done, _ = env.step(0.0)
+            _, _, terminated, truncated, _ = env.step(0.0)
+            done = terminated or truncated
             steps += 1
         assert steps == 24 * days
 
@@ -96,11 +99,11 @@ class TestEpisodeTermination:
 class TestActionClipping:
     def test_extreme_actions_are_clipped(self, env: GridEnvironment) -> None:
         # Actions far outside [-1, 1] should not crash
-        obs1, r1, _, _ = env.step(5.0)
+        obs1, r1, _, _, _ = env.step(5.0)
         assert obs1.shape == (6,)
 
         env.reset(seed=42)
-        obs2, r2, _, _ = env.step(-10.0)
+        obs2, r2, _, _, _ = env.step(-10.0)
         assert obs2.shape == (6,)
 
 
@@ -109,7 +112,8 @@ class TestReward:
         """All reward components are costs, so reward <= 0."""
         done = False
         while not done:
-            _, reward, done, _ = env.step(0.0)
+            _, reward, terminated, truncated, _ = env.step(0.0)
+            done = terminated or truncated
             assert reward <= 0.0, f"Reward should be <= 0, got {reward}"
 
 
@@ -132,6 +136,6 @@ class TestEpisodeSummary:
 class TestDeterminism:
     def test_same_seed_same_profiles(self) -> None:
         env = GridEnvironment(GridConfig(), ExperimentConfig(horizon_days=2))
-        obs1 = env.reset(seed=77)
-        obs2 = env.reset(seed=77)
+        obs1, _ = env.reset(seed=77)
+        obs2, _ = env.reset(seed=77)
         np.testing.assert_array_equal(obs1, obs2)
